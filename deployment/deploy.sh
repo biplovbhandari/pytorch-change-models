@@ -401,8 +401,7 @@ do_stop() {
       --quiet >/dev/null
     echo "  Endpoint deleted."
 
-    echo "Stop complete. Model and images are retained."
-    echo "Use './deploy.sh clean' to remove everything."
+    echo "Endpoint removed. Model and images are retained."
 }
 
 do_clean() {
