@@ -1,0 +1,24 @@
+# CPU-only variant for local testing on Mac (Apple Silicon compatible)
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# CPU-only PyTorch
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# torchange + app deps
+RUN pip install --no-cache-dir \
+    "torchange[app] @ git+https://github.com/biplovbhandari/pytorch-change-models.git@add-app-and-deployment"
+
+COPY ./app .
+
+ENV AIP_HEALTH_ROUTE=/health \
+    AIP_PREDICT_ROUTE=/predict \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 8080
+
+CMD ["sh", "-c", "echo '[Container] Starting server...' && python -c 'import main; print(\"[Container] Imports OK\")' && exec uvicorn main:app --host 0.0.0.0 --port 8080"]
