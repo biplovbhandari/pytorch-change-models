@@ -52,7 +52,7 @@ app = [
     "pillow",
     "requests",
     "streamlit",
-    "streamlit-drawable-canvas",
+    "streamlit-drawable-canvas-fix",
 ]
 
 [tool.setuptools.dynamic]

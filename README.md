@@ -92,7 +92,8 @@ This fork adds a Streamlit web app and FastAPI inference server for the [AnyChan
 
 #### What's added
 
-- `deployment/app/` — FastAPI server wrapping AnyChange with support for automatic, single-point, and multi-point change detection. Accepts images via base64, GCS URI, or HTTP URL. Per-request parameter tuning.
+- `app/` — Streamlit UI with interactive point drawing, three mask visualization modes, sidebar parameter controls, and server health check. See [`app/README.md`](app/README.md) for details.
+- `deployment/app/` — FastAPI server wrapping AnyChange with support for automatic, single-point, and multi-point change detection. Accepts images via base64, GCS URI, or HTTP URL. Per-request parameter tuning. See [`deployment/README.md`](deployment/README.md) for API docs.
 - `deployment/app/config.py` — Single source of truth for all model defaults and server configuration, overridable via environment variables.
 
 #### Quick start
@@ -113,9 +114,8 @@ cd deployment/app
 SAM_CKPT_URI=../../sam_weights/sam_vit_h_4b8939.pth \
 python -m uvicorn main:app --host 0.0.0.0 --port 8080
 
-# 4. In another terminal, run the test (from repo root):
-cd deployment
-python test_server.py
+# 4. In another terminal, run the Streamlit app (from repo root):
+streamlit run app/app_local.py
 ```
 
 #### Configuration

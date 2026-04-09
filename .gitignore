@@ -5,6 +5,3 @@ dev
 *.egg-info/
 .venv/
 sam_weights/
-
-app/
-!deployment/app/

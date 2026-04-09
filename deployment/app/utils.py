@@ -11,9 +11,17 @@ import torch
 from torchange.models.segment_any_change.segment_anything.utils.amg import rle_to_mask, MaskData
 
 
+def _has_masks(md: MaskData) -> bool:
+    """Check if MaskData has any masks (handles empty MaskData with no keys)."""
+    try:
+        return len(md["rles"]) > 0
+    except KeyError:
+        return False
+
+
 def maskdata_to_binary_union(md: MaskData, h: int, w: int) -> np.ndarray:
     """Merge all masks into a single binary union. Returns (H, W) uint8 with 0 or 255."""
-    if not isinstance(md, MaskData) or len(md["rles"]) == 0:
+    if not isinstance(md, MaskData) or not _has_masks(md):
         return np.zeros((h, w), dtype=np.uint8)
     out = np.zeros((h, w), bool)
     for rle in md["rles"]:
@@ -23,7 +31,7 @@ def maskdata_to_binary_union(md: MaskData, h: int, w: int) -> np.ndarray:
 
 def maskdata_to_label_map(md: MaskData, h: int, w: int) -> np.ndarray:
     """Paint each mask as a unique integer label (1..N). Background is 0."""
-    if not isinstance(md, MaskData) or len(md["rles"]) == 0:
+    if not isinstance(md, MaskData) or not _has_masks(md):
         return np.zeros((h, w), dtype=np.int32)
     # paint larger instances first
     try:
@@ -55,7 +63,7 @@ def maskdata_to_instance_stack(md: MaskData, h: int, w: int, order: str = "area_
     out_masks = []
     areas_out, boxes_out, conf_out, iou_out = [], [], [], []
 
-    if not isinstance(md, MaskData) or len(md["rles"]) == 0:
+    if not isinstance(md, MaskData) or not _has_masks(md):
         masks = np.zeros((0, h, w), dtype=bool)
         meta = {"areas": np.array([], dtype=np.int64)}
         return masks, meta

@@ -136,7 +136,10 @@ class Predictor:
     def _count_from_maskdata(md: MaskData | list | np.ndarray) -> int:
         """Return the number of masks in a MaskData, list, or (N,H,W) array."""
         if isinstance(md, MaskData):
-            return len(md["rles"])
+            try:
+                return len(md["rles"])
+            except KeyError:
+                return 0
         if isinstance(md, list):
             return len(md)
         if isinstance(md, np.ndarray) and md.ndim == 3:
@@ -294,32 +297,37 @@ class Predictor:
             self._purge_embed_cache(hard=changed["maskgen_rebuilt"])
 
             with torch.inference_mode():
-                if query is None:
-                    mask_data, _, _ = self.model.forward(img1_array, img2_array)
-                elif isinstance(query, dict):
-                    xy = query.get("xy"); temporal = int(query.get("temporal", 2))
-                    if not (isinstance(xy, (list, tuple)) and len(xy) == 2):
-                        raise ValueError("single-point query requires {'xy':[x,y], 'temporal':1|2}")
-                    mask_data = self.model.single_point_match(xy=xy, temporal=temporal,
-                                                            img1=img1_array, img2=img2_array)
-                elif isinstance(query, list):
-                    xyts = []
-                    for p in query:
-                        if isinstance(p, dict):
-                            xy = p.get("xy"); t = int(p.get("temporal", 2))
-                            if not (isinstance(xy, (list, tuple)) and len(xy) == 2):
-                                raise ValueError("each point dict needs {'xy':[x,y], 'temporal':1|2}")
-                            xyts.append([int(xy[0]), int(xy[1]), t])
-                        elif isinstance(p, (list, tuple)) and len(p) == 3:
-                            xyts.append([int(p[0]), int(p[1]), int(p[2])])
-                        else:
-                            raise ValueError("points must be dicts or [x,y,t] triples")
-                    xyts_arr = np.asarray(xyts, dtype=np.int64)
-                    if xyts_arr.ndim != 2 or xyts_arr.shape[1] != 3:
-                        raise ValueError(f"multi-points expects shape (N,3), got {xyts_arr.shape}")
-                    mask_data = self.model.multi_points_match(xyts=xyts_arr, img1=img1_array, img2=img2_array)
-                else:
-                    raise ValueError("query must be None, a dict (single), or a list (multi)")
+                try:
+                    if query is None:
+                        mask_data, _, _ = self.model.forward(img1_array, img2_array)
+                    elif isinstance(query, dict):
+                        xy = query.get("xy"); temporal = int(query.get("temporal", 2))
+                        if not (isinstance(xy, (list, tuple)) and len(xy) == 2):
+                            raise ValueError("single-point query requires {'xy':[x,y], 'temporal':1|2}")
+                        mask_data = self.model.single_point_match(xy=xy, temporal=temporal,
+                                                                img1=img1_array, img2=img2_array)
+                    elif isinstance(query, list):
+                        xyts = []
+                        for p in query:
+                            if isinstance(p, dict):
+                                xy = p.get("xy"); t = int(p.get("temporal", 2))
+                                if not (isinstance(xy, (list, tuple)) and len(xy) == 2):
+                                    raise ValueError("each point dict needs {'xy':[x,y], 'temporal':1|2}")
+                                xyts.append([int(xy[0]), int(xy[1]), t])
+                            elif isinstance(p, (list, tuple)) and len(p) == 3:
+                                xyts.append([int(p[0]), int(p[1]), int(p[2])])
+                            else:
+                                raise ValueError("points must be dicts or [x,y,t] triples")
+                        xyts_arr = np.asarray(xyts, dtype=np.int64)
+                        if xyts_arr.ndim != 2 or xyts_arr.shape[1] != 3:
+                            raise ValueError(f"multi-points expects shape (N,3), got {xyts_arr.shape}")
+                        mask_data = self.model.multi_points_match(xyts=xyts_arr, img1=img1_array, img2=img2_array)
+                    else:
+                        raise ValueError("query must be None, a dict (single), or a list (multi)")
+                except IndexError:
+                    # SAM found no mask for a queried point (e.g. featureless area or edge)
+                    print(f"[Predict] No masks found for query — returning empty MaskData")
+                    mask_data = MaskData()
 
             n_instances = self._count_from_maskdata(mask_data)
             self.last_instances_count = int(n_instances)
