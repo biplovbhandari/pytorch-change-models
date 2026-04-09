@@ -36,6 +36,7 @@ IMAGE_TAG="v$(date +%Y%m%d-%H%M%S)"
 IMAGE_URI_DEFAULT="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${IMAGE_NAME}:${IMAGE_TAG}"
 IMAGE_NAME_FULL="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${IMAGE_NAME}"
 
+
 # --- helpers ---
 to_full_model_name() {
   local raw="$1"
@@ -45,6 +46,7 @@ to_full_model_name() {
     echo "projects/${PROJECT_ID}/locations/${REGION}/models/${raw}"
   fi
 }
+
 
 wait_for_alias() {
   local parent_model_name="$1"
@@ -71,6 +73,7 @@ wait_for_alias() {
   return 1
 }
 
+
 resolve_image_uri() {
   if [[ -n "${EXISTING_IMAGE_URI:-}" ]]; then
     IMAGE_URI="${EXISTING_IMAGE_URI}"
@@ -85,6 +88,7 @@ resolve_image_uri() {
     IMAGE_ALIAS="${IMAGE_TAG}"
   fi
 }
+
 
 _deploy_model_to_endpoint() {
   local endpoint_id="$1"
@@ -107,9 +111,11 @@ _deploy_model_to_endpoint() {
   echo "   Deployed."
 }
 
+
 # ===========================================================================
 # Commands
 # ===========================================================================
+
 
 usage() {
     echo "Usage: ./deploy.sh [command]"
@@ -126,6 +132,7 @@ usage() {
     echo "To skip image build: export EXISTING_IMAGE_URI=<uri> before running deploy."
     echo ""
 }
+
 
 do_deploy() {
     resolve_image_uri
@@ -262,6 +269,7 @@ do_deploy() {
     echo "################################################################"
 }
 
+
 do_redeploy() {
     echo "Redeploying to existing endpoint..."
 
@@ -326,6 +334,7 @@ do_redeploy() {
     echo "################################################################"
 }
 
+
 do_status() {
     echo "Checking Vertex AI resources..."
     echo ""
@@ -366,6 +375,7 @@ do_status() {
     fi
 }
 
+
 do_stop() {
     echo "Undeploying model from endpoint..."
 
@@ -404,6 +414,7 @@ do_stop() {
     echo "Endpoint removed. Model and images are retained."
 }
 
+
 do_clean() {
     echo "Cleaning up all Vertex AI resources..."
     echo ""
@@ -436,6 +447,7 @@ do_clean() {
     echo "Clean up complete."
 }
 
+
 do_logs() {
     ENDPOINT_ID=$(gcloud ai endpoints list \
       --region="${REGION}" \
@@ -454,6 +466,7 @@ do_logs() {
       --format="table(timestamp,textPayload)" \
       --freshness=1h
 }
+
 
 # ===========================================================================
 # Route command

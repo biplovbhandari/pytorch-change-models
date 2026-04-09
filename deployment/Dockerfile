@@ -36,4 +36,4 @@ ENV AIP_HEALTH_ROUTE=/health \
 # Expose the port the app runs on
 EXPOSE 8080
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["sh", "-c", "echo '[Container] Starting server...' && python -c 'import main; print(\"[Container] Imports OK\")' && exec uvicorn main:app --host 0.0.0.0 --port 8080"]
