@@ -5,3 +5,4 @@ dev
 *.egg-info/
 .venv/
 sam_weights/
+.env
