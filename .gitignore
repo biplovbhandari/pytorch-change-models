@@ -7,3 +7,4 @@ dev
 sam_weights/
 
 app/
+!deployment/app/

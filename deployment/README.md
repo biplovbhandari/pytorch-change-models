@@ -126,6 +126,49 @@ Accepts one or more image pairs with optional point queries and parameter overri
 }
 ```
 
+### More Examples
+
+**NPZ arrays with band selection (e.g. remote sensing multi-band data):**
+
+```json
+{
+  "parameters": {"mask_mode": "label"},
+  "instances": [{
+    "img1": {"npz_b64": "<base64 of .npz>", "key": "arr"},
+    "img2": {"npz_b64": "<base64 of .npz>", "key": "arr"},
+    "bands": [2, 1, 0],
+    "channel_order": "hwc"
+  }]
+}
+```
+
+**CHW float arrays via the generic `array` envelope:**
+
+```json
+{
+  "parameters": {"mask_mode": "union"},
+  "instances": [{
+    "img1": {"array": {"format": "npy", "b64": "<base64>"},
+             "channel_order": "chw", "bands": [0, 1, 2]},
+    "img2": {"array": {"format": "npz", "b64": "<base64>", "key": "rgb"},
+             "channel_order": "chw"}
+  }]
+}
+```
+
+**GCS URIs (used in Vertex AI deployments):**
+
+```json
+{
+  "parameters": {"mask_mode": "instances"},
+  "instances": [{
+    "img1": {"uri": "gs://bucket/path/t1.npz", "key": "arr"},
+    "img2": {"uri": "gs://bucket/path/t2.npz", "key": "arr"},
+    "bands": ["r", "g", "b"]
+  }]
+}
+```
+
 ## Checkpoint Resolution
 
 The server resolves the SAM checkpoint using this priority:
