@@ -44,6 +44,17 @@ dependencies = [
     'ever-beta'
 ]
 
+[project.optional-dependencies]
+app = [
+    "fastapi",
+    "uvicorn",
+    "google-cloud-storage",
+    "pillow",
+    "requests",
+    "streamlit",
+    "streamlit-drawable-canvas",
+]
+
 [tool.setuptools.dynamic]
 version = { attr = "torchange.__version__" }
 

@@ -1,7 +1,7 @@
 ## torchange - A Unified Change Representation Learning Benchmark Library
 [![PyPI Downloads](https://static.pepy.tech/badge/torchange)](https://pepy.tech/projects/torchange)
 
-torchange aims to provide out-of-box contemporary spatiotemporal change model implementations, standard metrics, and datasets, in pursuit of benchmarking and reproducibility. 
+torchange aims to provide out-of-box contemporary spatiotemporal change model implementations, standard metrics, and datasets, in pursuit of benchmarking and reproducibility.
 
 >This project is still under development. Other repositories would be gradually merged into ```torchange```.
 
@@ -9,10 +9,10 @@ torchange aims to provide out-of-box contemporary spatiotemporal change model im
 
 > Note: ```torchange``` is designed to provide straightforward implementations, thus we will adopt a single file for each algorithm without any modular encapsulation.
 Algorithms released before 2024 will be transferred here from our internal codebase.
-If you encounter any bugs, please report them in the issue section. Please be patient with new releases and bug fixes, as this is a significant burden for a single maintainer. 
+If you encounter any bugs, please report them in the issue section. Please be patient with new releases and bug fixes, as this is a significant burden for a single maintainer.
 Technical consultations are only accepted via email inquiry.
 
-> Our default training engine is [ever](https://github.com/Z-Zheng/ever/). 
+> Our default training engine is [ever](https://github.com/Z-Zheng/ever/).
 
 ### News
 
@@ -83,6 +83,66 @@ This is also a tutorial for junior researchers interested in contemporary change
 - (AnyChange) Segment Any Change, NeurIPS 2024 [[`Paper`](https://arxiv.org/abs/2402.01188)], [[`Code`](https://github.com/Z-Zheng/pytorch-change-models/blob/main/torchange/models/segment_any_change)]
 - (Changen2) Changen2: Multi-Temporal Remote Sensing Generative Change Foundation Model, IEEE TPAMI 2024 [[`Paper`](https://arxiv.org/abs/2406.17998)]，[[`Code/Dataset/Pretrained Models`](https://github.com/Z-Zheng/pytorch-change-models/tree/main/torchange/models/changen2)]
 
+
+---
+
+### AnyChange Streamlit App + FastAPI Server
+
+This fork adds a Streamlit web app and FastAPI inference server for the [AnyChange (Segment Any Change)](https://arxiv.org/abs/2402.01188) model, enabling interactive zero-shot change detection through a browser UI.
+
+#### What's added
+
+- `deployment/app/` — FastAPI server wrapping AnyChange with support for automatic, single-point, and multi-point change detection. Accepts images via base64, GCS URI, or HTTP URL. Per-request parameter tuning.
+- `deployment/app/config.py` — Single source of truth for all model defaults and server configuration, overridable via environment variables.
+
+#### Quick start
+
+```bash
+# 1. Create environment and install
+uv venv --python 3.10
+source .venv/bin/activate
+uv pip install -e ".[app]"
+
+# 2. Download SAM checkpoint (vit_h = 2.4GB, or vit_b = 375MB for a lighter option)
+mkdir -p sam_weights
+curl -L -o sam_weights/sam_vit_h_4b8939.pth \
+  https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+
+# 3. Start the FastAPI server
+cd deployment/app
+SAM_CKPT_URI=../../sam_weights/sam_vit_h_4b8939.pth \
+python -m uvicorn main:app --host 0.0.0.0 --port 8080
+
+# 4. In another terminal, run the test (from repo root):
+cd deployment
+python test_server.py
+```
+
+#### Configuration
+
+All defaults live in `deployment/app/config.py` and can be overridden via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SAM_CKPT_URI` | — | Path or `gs://` URI to SAM checkpoint |
+| `ANYCHANGE_MODEL_TYPE` | `vit_h` | SAM variant: `vit_b`, `vit_l`, or `vit_h` |
+| `POINTS_PER_SIDE` | `32` | Grid density for automatic mask generation |
+| `STABILITY_THRESH` | `0.95` | SAM mask stability score threshold |
+| `CHANGE_CONF_THRESH` | `145` | Change confidence angle threshold (degrees) |
+| `OBJECT_SIM_THRESH` | `60` | Object similarity threshold for point queries |
+| `DEFAULT_MASK_MODE` | `instances` | Output mode: `instances`, `label`, or `union` |
+
+#### SAM checkpoints
+
+| Model | Size | Download |
+|-------|------|----------|
+| `vit_b` | 375 MB | `sam_vit_b_01ec64.pth` |
+| `vit_l` | 1.2 GB | `sam_vit_l_0b3195.pth` |
+| `vit_h` | 2.4 GB | `sam_vit_h_4b8939.pth` |
+
+All available from [facebookresearch/segment-anything](https://github.com/facebookresearch/segment-anything#model-checkpoints).
+
+---
 
 ### Contributing
 We welcome issues and pull requests that improve model implementations, documentation, or usability.

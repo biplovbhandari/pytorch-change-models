@@ -2,3 +2,8 @@ __pycache__/
 .idea
 scripts
 dev
+*.egg-info/
+.venv/
+sam_weights/
+
+app/
