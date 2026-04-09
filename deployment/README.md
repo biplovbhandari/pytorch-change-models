@@ -11,6 +11,9 @@ deployment/
 │   ├── main.py            # FastAPI routes (/health, /predict)
 │   ├── predictor.py       # AnyChange wrapper (thread-safe, per-request params)
 │   └── utils.py           # Mask conversion + image loading helpers
+├── Dockerfile             # CUDA 12.4 + Python 3.11 container (deps from pyproject.toml)
+├── deploy.sh              # Vertex AI deployment CLI (deploy/stop/clean/status/logs)
+├── .env.example           # Config template
 ├── test_server.py         # Quick smoke test (sends demo images to local server)
 └── README.md
 ```
@@ -204,4 +207,101 @@ All defaults are in `app/config.py` and can be overridden via environment variab
 | `AIP_HEALTH_ROUTE` | `/health` | Health endpoint path (Vertex AI convention) |
 | `AIP_PREDICT_ROUTE` | `/predict` | Predict endpoint path (Vertex AI convention) |
 
-<!-- TODO: Add Vertex AI and Cloud Run deployment instructions once deploy scripts are ported -->
+## Vertex AI Deployment
+
+The `deploy.sh` script provides a CLI for the full Vertex AI lifecycle:
+
+```bash
+cd deployment
+./deploy.sh          # show usage
+./deploy.sh deploy   # build, upload, deploy
+./deploy.sh status   # show endpoint and model info
+./deploy.sh logs     # show recent prediction logs
+./deploy.sh stop     # undeploy model, delete endpoint (keeps images + model)
+./deploy.sh clean    # delete everything (endpoint, model, images)
+```
+
+### Deploy pipeline
+
+```mermaid
+flowchart LR
+    subgraph "deploy.sh deploy"
+        A["1. Enable APIs"] --> B["2. Artifact Registry"]
+        B --> C["3. Build & push image"]
+        C --> D["4. Upload model version"]
+        D --> E["5. Create endpoint"]
+        E --> F["6. Service account + GCS"]
+        F --> G["7. Deploy to endpoint"]
+    end
+```
+
+### Setup
+
+1. Authenticate: `gcloud auth login`
+2. Upload SAM checkpoint to GCS: `gsutil cp sam_vit_h_4b8939.pth gs://your-bucket/`
+3. Create `.env` from template:
+
+```bash
+cp .env.example .env
+# Edit .env with your PROJECT_ID and BUCKET_URI
+```
+
+4. Deploy:
+
+```bash
+./deploy.sh deploy
+```
+
+To skip the image build and reuse an existing image:
+
+```bash
+# Set in .env or export before running
+export EXISTING_IMAGE_URI="us-central1-docker.pkg.dev/your-project/your-repo/your-image:tag"
+./deploy.sh deploy
+```
+
+### Configuration
+
+All config is loaded from `.env` (see `.env.example`):
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `PROJECT_ID` | Yes | — | GCP project |
+| `BUCKET_URI` | Yes | — | GCS bucket with SAM checkpoint |
+| `REGION` | No | `us-central1` | Deployment region |
+| `REPO_NAME` | No | `segment-any-change-repo` | Artifact Registry repo name |
+| `IMAGE_NAME` | No | `segment-any-change-model-server` | Docker image name |
+| `MODEL_DISPLAY_NAME` | No | `segment-any-change-model` | Vertex AI model registry name |
+| `ENDPOINT_DISPLAY_NAME` | No | `segment-any-change-model-endpoint` | Vertex AI endpoint name |
+| `MACHINE_TYPE` | No | `n1-standard-8` | VM machine type |
+| `ACCELERATOR` | No | `type=nvidia-tesla-t4,count=1` | GPU accelerator |
+| `MIN_REPLICAS` | No | `1` | Minimum replica count |
+| `MAX_REPLICAS` | No | `1` | Maximum replica count |
+| `EXISTING_IMAGE_URI` | No | — | Skip build and use this image |
+
+### Commands
+
+| Command | What it does |
+|---------|-------------|
+| `deploy` | Full pipeline: enable APIs, build image, upload model version, create endpoint, deploy with T4 GPU |
+| `redeploy` | Deploy latest model version to existing endpoint (skips build/upload — for retrying after quota errors or changing machine config) |
+| `status` | Show endpoint info, deployed models, model versions |
+| `logs` | Show last 50 prediction logs (last hour) |
+| `stop` | Undeploy model from endpoint, delete endpoint. Keeps model + images for redeployment |
+| `clean` | Stop + delete model + delete container images from Artifact Registry |
+
+### Docker Image
+
+The `Dockerfile` builds a CUDA 12.4 container with:
+- Python 3.11
+- PyTorch 2.4.1 (cu124) — installed first from the CUDA-specific index
+- `torchange[app]` — installed from the fork's `pyproject.toml` (single source of truth for all non-PyTorch deps)
+- FastAPI + uvicorn
+
+No `requirements.txt` — all dependencies are managed through `pyproject.toml`. PyTorch is the only exception because it requires a CUDA-specific package index.
+
+At startup, the container downloads the SAM checkpoint from GCS (via `AIP_STORAGE_URI` set by Vertex AI) and starts the uvicorn server on port 8080.
+
+### Machine config
+
+Default deployment: `n1-standard-8` + 1x NVIDIA T4 GPU, 1-2 replicas. Edit `do_deploy()` in `deploy.sh` to change.
