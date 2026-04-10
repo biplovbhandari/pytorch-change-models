@@ -53,6 +53,7 @@ app = [
     "requests",
     "streamlit",
     "streamlit-drawable-canvas-fix",
+    "google-cloud-aiplatform",
 ]
 
 [tool.setuptools.dynamic]

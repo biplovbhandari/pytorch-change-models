@@ -1,14 +1,17 @@
-"""Segment Any Change — Local FastAPI Streamlit app."""
+"""Segment Any Change — Vertex AI Endpoint Streamlit app."""
 
+import io
 import time
 import numpy as np
 from PIL import Image
-import requests
 import streamlit as st
 from streamlit_drawable_canvas import st_canvas
+from google.cloud import storage, aiplatform
 
 from config import (
-    LOCAL_API, DEMO_T1_URL, DEMO_T2_URL,
+    DEMO_T1_URL, DEMO_T2_URL,
+    VERTEX_PROJECT_ID, VERTEX_REGION, VERTEX_ENDPOINT_ID,
+    GCS_BUCKET, GCS_PREFIX,
     MASK_MODES, DEFAULT_MASK_MODE_INDEX,
     POINTS_PER_SIDE_MIN, POINTS_PER_SIDE_MAX, POINTS_PER_SIDE_DEFAULT, POINTS_PER_SIDE_STEP,
     STABILITY_THRESH_MIN, STABILITY_THRESH_MAX, STABILITY_THRESH_DEFAULT, STABILITY_THRESH_STEP,
@@ -17,21 +20,40 @@ from config import (
     API_TIMEOUT,
 )
 from viz import (
-    b64_png, png_bytes, decode_npz, overlay_mask_rgba,
+    png_bytes, decode_npz, overlay_mask_rgba,
     random_colors, overlay_instances, colorize_label,
 )
-from api_client import load_image_from_url, check_server_health, points_from_canvas
+from api_client import load_image_from_url, points_from_canvas
+
+
+# ---------- Vertex AI helpers ----------
+def _init_vertex():
+    """Initialize Vertex AI and GCS clients. Returns (endpoint, gcs_bucket)."""
+    if not VERTEX_PROJECT_ID or not VERTEX_ENDPOINT_ID:
+        st.error("Set `PROJECT_ID` and `ENDPOINT_ID` in your environment or `.env`.")
+        st.stop()
+    aiplatform.init(project=VERTEX_PROJECT_ID, location=VERTEX_REGION)
+    endpoint = aiplatform.Endpoint(VERTEX_ENDPOINT_ID)
+    gcs_bucket = None
+    if GCS_BUCKET:
+        gcs_bucket = storage.Client().bucket(GCS_BUCKET)
+    return endpoint, gcs_bucket
+
+
+def _upload_pil_to_gcs(gcs_bucket, img: Image.Image, dest_path: str) -> str:
+    """Upload a PIL image to GCS and return the gs:// URI."""
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    blob = gcs_bucket.blob(dest_path)
+    blob.upload_from_string(buf.getvalue(), content_type="image/png")
+    return f"gs://{gcs_bucket.name}/{dest_path}"
+
 
 # ---------- Page setup ----------
-st.set_page_config(page_title="Segment Any Change", layout="wide")
-st.title("Segment Any Change")
+st.set_page_config(page_title="Segment Any Change (Vertex)", layout="wide")
+st.title("Segment Any Change — Vertex AI")
 
-if not check_server_health(LOCAL_API):
-    st.error(f"Server not reachable at `{LOCAL_API}`. Start the FastAPI server first:\n\n"
-             "```\ncd deployment/app\n"
-             "SAM_CKPT_URI=../../sam_weights/sam_vit_h_4b8939.pth "
-             "python -m uvicorn main:app --host 0.0.0.0 --port 8080\n```")
-    st.stop()
+endpoint, gcs_bucket = _init_vertex()
 
 # ---------- Sidebar ----------
 with st.sidebar:
@@ -47,29 +69,56 @@ with st.sidebar:
         CHANGE_CONF_THRESH_MIN, CHANGE_CONF_THRESH_MAX, CHANGE_CONF_THRESH_DEFAULT, step=CHANGE_CONF_THRESH_STEP)
     object_sim_thr = st.slider("object_sim_thresh (for points)",
         OBJECT_SIM_THRESH_MIN, OBJECT_SIM_THRESH_MAX, OBJECT_SIM_THRESH_DEFAULT, step=OBJECT_SIM_THRESH_STEP)
-    st.divider()
-    use_demo = st.checkbox("Use demo URLs", value=True)
 
-# ---------- Load images ----------
-colL, colR = st.columns(2)
-with colL:
-    if use_demo:
-        img1 = load_image_from_url(DEMO_T1_URL)
-        st.info("Using demo BEFORE URL")
-    else:
-        up1 = st.file_uploader("Upload BEFORE", type=["png", "jpg", "jpeg"], key="img1")
-        if not up1: st.stop()
-        img1 = Image.open(up1).convert("RGB")
-with colR:
-    if use_demo:
-        img2 = load_image_from_url(DEMO_T2_URL)
-        st.info("Using demo AFTER URL")
-    else:
-        up2 = st.file_uploader("Upload AFTER", type=["png", "jpg", "jpeg"], key="img2")
-        if not up2: st.stop()
-        img2 = Image.open(up2).convert("RGB")
+# ---------- Input mode ----------
+st.markdown("### Input mode")
+input_mode = st.radio("Provide images by:", ["Demo URLs", "Paste URLs", "Upload to GCS"], index=0, horizontal=True)
 
-st.caption(f"Loaded. BEFORE: {img1.size}, AFTER: {img2.size}")
+if input_mode == "Demo URLs":
+    img1 = load_image_from_url(DEMO_T1_URL)
+    img2 = load_image_from_url(DEMO_T2_URL)
+    inst_img1 = {"uri": DEMO_T1_URL}
+    inst_img2 = {"uri": DEMO_T2_URL}
+    colL, colR = st.columns(2)
+    with colL: st.image(img1, caption="BEFORE (demo)", width="stretch")
+    with colR: st.image(img2, caption="AFTER (demo)", width="stretch")
+
+elif input_mode == "Paste URLs":
+    url1 = st.text_input("BEFORE URL", value=DEMO_T1_URL)
+    url2 = st.text_input("AFTER URL", value=DEMO_T2_URL)
+    try:
+        img1 = load_image_from_url(url1)
+        img2 = load_image_from_url(url2)
+    except Exception as e:
+        st.warning(f"Could not load URLs: {e}")
+        st.stop()
+    inst_img1 = {"uri": url1}
+    inst_img2 = {"uri": url2}
+    colL, colR = st.columns(2)
+    with colL: st.image(img1, caption="BEFORE", width="stretch")
+    with colR: st.image(img2, caption="AFTER", width="stretch")
+
+else:  # Upload to GCS
+    if not gcs_bucket:
+        st.error("Set `GCS_BUCKET` in your environment to enable uploads.")
+        st.stop()
+    colL, colR = st.columns(2)
+    with colL: up1 = st.file_uploader("Upload BEFORE", type=["png", "jpg", "jpeg"], key="img1")
+    with colR: up2 = st.file_uploader("Upload AFTER", type=["png", "jpg", "jpeg"], key="img2")
+    if not up1 or not up2:
+        st.info("Upload both images to continue.")
+        st.stop()
+    img1 = Image.open(up1).convert("RGB")
+    img2 = Image.open(up2).convert("RGB")
+    st.caption(f"Loaded. BEFORE: {img1.size}, AFTER: {img2.size}")
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    with st.spinner("Uploading to GCS..."):
+        uri1 = _upload_pil_to_gcs(gcs_bucket, img1, f"{GCS_PREFIX}/{ts}/t1.png")
+        uri2 = _upload_pil_to_gcs(gcs_bucket, img2, f"{GCS_PREFIX}/{ts}/t2.png")
+    inst_img1 = {"uri": uri1}
+    inst_img2 = {"uri": uri2}
+
+st.caption(f"Image sizes: BEFORE {img1.size}, AFTER {img2.size}")
 
 # ---------- Point canvases ----------
 st.write("Use the 'point' tool to add points on either image.")
@@ -100,39 +149,28 @@ with st.expander("Collected points", expanded=False):
 
 # ---------- Run inference ----------
 if st.button("Run"):
-    if use_demo:
-        inst = {"img1": {"uri": DEMO_T1_URL}, "img2": {"uri": DEMO_T2_URL}}
-    else:
-        inst = {"img1": {"b64": b64_png(img1)}, "img2": {"b64": b64_png(img2)}}
-
+    inst = {"img1": inst_img1, "img2": inst_img2}
     if pts:
         inst["points"] = pts
 
-    payload = {
-        "parameters": {
-            "mask_mode": mask_mode,
-            "points_per_side": int(points_per_side),
-            "stability_thresh": float(stability_thresh),
-            "change_conf_thresh": int(change_conf_thr),
-            "object_sim_thresh": int(object_sim_thr),
-            "use_normalized_feature": True,
-            "bitemporal_match": True,
-        },
-        "instances": [inst],
+    parameters = {
+        "mask_mode": mask_mode,
+        "points_per_side": int(points_per_side),
+        "stability_thresh": float(stability_thresh),
+        "change_conf_thresh": int(change_conf_thr),
+        "object_sim_thresh": int(object_sim_thr),
+        "use_normalized_feature": True,
+        "bitemporal_match": True,
     }
 
     try:
-        with st.spinner("Running change detection..."):
+        with st.spinner("Calling Vertex AI endpoint..."):
             t0 = time.monotonic()
-            r = requests.post(LOCAL_API, json=payload, timeout=API_TIMEOUT)
-            r.raise_for_status()
+            resp = endpoint.predict(instances=[inst], parameters=parameters, timeout=API_TIMEOUT)
             elapsed = time.monotonic() - t0
-            pred = r.json()["predictions"][0]
-    except requests.ConnectionError:
-        st.error(f"Server not reachable at `{LOCAL_API}`.")
-        st.stop()
+            pred = resp.predictions[0]
     except Exception as e:
-        st.error(f"Prediction error: {e}")
+        st.error(f"Vertex predict error: {e}")
         st.stop()
 
     st.session_state["pred"] = pred
