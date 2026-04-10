@@ -1,9 +1,15 @@
 # Segment Any Change — Streamlit App
 
-<!-- TODO: Add demo GIF once app is working end-to-end -->
-<!-- ![Demo](assets/demo.gif) -->
+![Demo](assets/demo.gif)
 
 Interactive web UI for zero-shot change detection using [AnyChange (Segment Any Change)](https://arxiv.org/abs/2402.01188). Upload or load before/after satellite image pairs, optionally click points of interest, and visualize detected changes — no model training required.
+
+Two app variants share the same visualization, config, and canvas modules:
+
+| App | Backend | Run with |
+|-----|---------|----------|
+| `app_local.py` | Local FastAPI server | `streamlit run app/app_local.py` |
+| `app_vertex.py` | Vertex AI endpoint | `streamlit run app/app_vertex.py` |
 
 ## Features
 
@@ -12,27 +18,48 @@ Interactive web UI for zero-shot change detection using [AnyChange (Segment Any 
 - **Interactive point drawing**: click directly on before/after images to guide detection
 - **Parameter controls**: tune SAM grid density, stability threshold, change confidence, and object similarity via sidebar sliders
 - **Demo images**: built-in before/after pair for quick testing
+- **Download results**: PNG export of overlay and mask images
+
+## Module Structure
+
+```
+app/
+├── config.py         # Shared constants (URLs, slider ranges, Vertex config)
+├── viz.py            # Pure visualization helpers (no Streamlit dependency)
+├── api_client.py     # Network utilities (health check, image loading, canvas parsing)
+├── app_local.py      # Local FastAPI backend
+└── app_vertex.py     # Vertex AI endpoint backend
+```
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph "Browser (localhost:8501)"
-        UI["Streamlit UI<br/>app/app_local.py"]
+    subgraph Shared["Shared modules"]
+        CFG["config.py"]
+        VIZ["viz.py"]
+        API["api_client.py"]
     end
 
-    subgraph "Server (localhost:8080)"
-        API["FastAPI<br/>main.py"]
-        PRED["Predictor<br/>predictor.py"]
-        SAM["AnyChange<br/>(SAM)"]
-        API --> PRED --> SAM
+    subgraph Local["app_local.py"]
+        L_UI["Streamlit UI"]
     end
 
-    UI -- "POST /predict<br/>b64 images + parameters" --> API
-    API -- "npz masks + metadata" --> UI
+    subgraph Vertex["app_vertex.py"]
+        V_UI["Streamlit UI"]
+    end
+
+    L_UI --> CFG & VIZ & API
+    V_UI --> CFG & VIZ & API
+
+    L_UI -- "POST /predict" --> FastAPI["Local FastAPI<br/>deployment/app/"]
+    V_UI -- "endpoint.predict()" --> VAI["Vertex AI<br/>Endpoint"]
+
+    FastAPI --> SAM["AnyChange (SAM)"]
+    VAI --> SAM2["AnyChange (SAM)"]
 ```
 
-## Quick Start
+## Quick Start — Local
 
 ### Prerequisites
 
@@ -69,6 +96,19 @@ streamlit run app/app_local.py
 ```
 
 The app opens at `http://localhost:8501`.
+
+## Quick Start — Vertex AI
+
+Requires a deployed Vertex AI endpoint (see [`deployment/README.md`](../deployment/README.md)).
+
+```bash
+PROJECT_ID=your-project \
+ENDPOINT_ID=your-endpoint-id \
+GCS_BUCKET=your-bucket \
+streamlit run app/app_vertex.py
+```
+
+The Vertex app supports three input modes: demo URLs, paste custom URLs, or upload images to GCS.
 
 ## Usage
 

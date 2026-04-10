@@ -92,7 +92,7 @@ This fork adds a Streamlit web app and FastAPI inference server for the [AnyChan
 
 #### What's added
 
-- `app/` — Streamlit UI with interactive point drawing, three mask visualization modes, sidebar parameter controls, and server health check. See [`app/README.md`](app/README.md) for details.
+- `app/` — Two Streamlit apps (local FastAPI + Vertex AI) sharing visualization, config, and canvas modules. Interactive point drawing, three mask modes, parameter controls, and result downloads. See [`app/README.md`](app/README.md) for details.
 - `deployment/app/` — FastAPI server wrapping AnyChange with support for automatic, single-point, and multi-point change detection. Accepts images via base64, GCS URI, or HTTP URL. Per-request parameter tuning. See [`deployment/README.md`](deployment/README.md) for API docs.
 - `deployment/app/config.py` — Single source of truth for all model defaults and server configuration, overridable via environment variables.
 
